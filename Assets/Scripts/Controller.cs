@@ -1,21 +1,43 @@
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class TouchInputController : MonoBehaviour
 {
+    [Header("References")]
     public Camera cam;
     public TouchOrbitCamera orbitCamera;
+
+    [Header("Raycast")]
     public LayerMask blockLayerMask;
 
-    public float dragPlaneHeight = 0f;
-    public float dragThreshold = 10f;
+    [Header("Drag Plane")]
+    public float dragPlaneHeight = 0f;  
+
+    [Header("Tap vs Drag")]
+    public float dragThresholdPixels = 30f;
+
+    [Header("Drag Physics")]
+    public float spring = 60f;
+    public float damper = 30f;
+    public float maxDistance = 0.22f;
 
     Block selected;
-    Rigidbody dragHandleRb;
-    SpringJoint joint;
-    GameObject dragHandle;
-
-    Vector2 startPos;
     bool draggingBlock;
+
+    Vector2 pointerStart;
+    bool pointerDown;
+
+    // Drag handle + joint
+    Rigidbody dragHandleRb;
+    GameObject dragHandle;
+    SpringJoint joint;
+
+    Vector3 localGrabAnchor;
+
+    public bool constrainPullToLongAxis = true;
+    public float maxPullDistance = 1.0f;
+    Vector3 dragStartHandlePosition;
+    Vector3 dragStartBlockPosition;
 
     void Awake()
     {
@@ -28,68 +50,125 @@ public class TouchInputController : MonoBehaviour
 
     void Update()
     {
-        // TOUCH
+        if (!cam || !orbitCamera) return;
+
         if (Input.touchCount > 0)
         {
             Touch t = Input.GetTouch(0);
-            HandleInput(t.phase, t.position, t.deltaPosition.magnitude);
-        }
-        // MOUSE
-        else if (Input.GetMouseButtonDown(0) || Input.GetMouseButton(0) || Input.GetMouseButtonUp(0))
-        {
-            Vector2 pos = Input.mousePosition;
-            float delta = (pos - startPos).magnitude;
+            HandlePointer(t.phase, t.position, t.deltaPosition);
 
+            if (Input.touchCount >= 2)
+            {
+                Touch a = Input.GetTouch(0);
+                Touch b = Input.GetTouch(1);
+
+                Vector2 aPrev = a.position - a.deltaPosition;
+                Vector2 bPrev = b.position - b.deltaPosition;
+
+                float prevDist = Vector2.Distance(aPrev, bPrev);
+                float currDist = Vector2.Distance(a.position, b.position);
+
+                float pinchDelta = currDist - prevDist; // pixels
+                orbitCamera.ApplyZoomDelta(pinchDelta * 0.01f);
+            }
+        }
+        else
+        {
             if (Input.GetMouseButtonDown(0))
-                HandleInput(TouchPhase.Began, pos, 0);
-            else if (Input.GetMouseButton(0))
-                HandleInput(TouchPhase.Moved, pos, delta);
-            else
-                HandleInput(TouchPhase.Ended, pos, delta);
+            {
+                pointerDown = true;
+                Vector2 pos = Input.mousePosition;
+                pointerStart = pos;
+                HandlePointer(TouchPhase.Began, pos, Vector2.zero);
+            }
+            else if (Input.GetMouseButton(0) && pointerDown)
+            {
+                Vector2 pos = Input.mousePosition;
+                Vector2 delta = new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y")) * 12f;
+                HandlePointer(TouchPhase.Moved, pos, delta);
+            }
+            else if (Input.GetMouseButtonUp(0))
+            {
+                pointerDown = false;
+                HandlePointer(TouchPhase.Ended, (Vector2)Input.mousePosition, Vector2.zero);
+            }
+
+            float scroll = Input.mouseScrollDelta.y;
+            if (Mathf.Abs(scroll) > 0.01f)
+            {
+                orbitCamera.ApplyZoomDelta(scroll * 0.6f);
+            }
         }
 
         orbitCamera.allowOrbit = (selected == null && !draggingBlock);
     }
 
-    void HandleInput(TouchPhase phase, Vector2 screenPos, float delta)
+    void HandlePointer(TouchPhase phase, Vector2 screenPos, Vector2 delta)
     {
         if (phase == TouchPhase.Began)
         {
-            startPos = screenPos;
-            TrySelect(screenPos);
-        }
-        else if (phase == TouchPhase.Moved && selected && delta > dragThreshold)
-        {
-            if (!draggingBlock)
-                BeginDrag(screenPos);
+            pointerStart = screenPos;
 
-            UpdateDrag(screenPos);
+            if (!TrySelect(screenPos))
+            {
+                Deselect();
+            }
+
+            return;
         }
-        else if (phase == TouchPhase.Ended)
+
+        if (phase == TouchPhase.Moved || phase == TouchPhase.Stationary)
+        {
+            if (selected != null)
+            {
+                float moved = (screenPos - pointerStart).magnitude;
+
+                if (!draggingBlock && moved >= dragThresholdPixels)
+                {
+                    BeginDrag(screenPos);
+                }
+
+                if (draggingBlock)
+                {
+                    UpdateDrag(screenPos);
+                }
+            }
+            else
+            {
+                // Orbit camera if no block selected
+                orbitCamera.ApplyOrbitDelta(delta);
+            }
+
+            return;
+        }
+
+        if (phase == TouchPhase.Ended || phase == TouchPhase.Canceled)
         {
             EndDrag();
         }
     }
 
-    void TrySelect(Vector2 pos)
+    bool TrySelect(Vector2 screenPos)
     {
-        Ray ray = cam.ScreenPointToRay(pos);
-        if (Physics.Raycast(ray, out RaycastHit hit, 100f, blockLayerMask))
+        Ray ray = cam.ScreenPointToRay(screenPos);
+
+        if (Physics.Raycast(ray, out RaycastHit hit, 200f, blockLayerMask))
         {
             var block = hit.collider.GetComponentInParent<Block>();
-            if (block)
-            {
-                Select(block);
-                return;
-            }
+            if (block == null) return false;
+
+            Select(block);
+
+            localGrabAnchor = block.transform.InverseTransformPoint(hit.point);
+            return true;
         }
 
-        Deselect();
+        return false;
     }
 
     void Select(Block block)
     {
-        if (selected) selected.SetSelected(false);
+        if (selected != null) selected.SetSelected(false);
         selected = block;
         selected.SetSelected(true);
     }
@@ -97,45 +176,89 @@ public class TouchInputController : MonoBehaviour
     void Deselect()
     {
         EndDrag();
-        if (selected)
+        if (selected != null)
         {
             selected.SetSelected(false);
             selected = null;
         }
     }
 
-    void BeginDrag(Vector2 pos)
+    void BeginDrag(Vector2 screenPos)
     {
-        Ray ray = cam.ScreenPointToRay(pos);
-        Plane plane = new Plane(Vector3.up, Vector3.up * dragPlaneHeight);
+        if (selected == null) return;
+        EndDrag();
 
-        if (!plane.Raycast(ray, out float enter)) return;
+        Vector3 grabWorld = selected.transform.TransformPoint(localGrabAnchor);
+        Vector3 handleStart = new Vector3(grabWorld.x, dragPlaneHeight, grabWorld.z);
 
-        dragHandle.transform.position = ray.GetPoint(enter);
+        dragHandle.transform.position = handleStart;
+        dragHandleRb.position = handleStart;
+
+        dragStartHandlePosition = handleStart;
+        dragStartBlockPosition = selected.transform.position;
 
         joint = selected.gameObject.AddComponent<SpringJoint>();
+        joint.autoConfigureConnectedAnchor = false;
         joint.connectedBody = dragHandleRb;
-        joint.spring = 120f;
-        joint.damper = 25f;
-        joint.maxDistance = 0.1f;
+
+        joint.anchor = localGrabAnchor;      
+        joint.connectedAnchor = Vector3.zero;
+
+        joint.spring = spring;              
+        joint.damper = damper;               
+        joint.maxDistance = maxDistance;    
+        joint.enablePreprocessing = false;
 
         draggingBlock = true;
     }
 
-    void UpdateDrag(Vector2 pos)
+    void UpdateDrag(Vector2 screenPos)
     {
-        Ray ray = cam.ScreenPointToRay(pos);
-        Plane plane = new Plane(Vector3.up, Vector3.up * dragPlaneHeight);
+        Vector3 worldPointOnPlane = ScreenToPlanePoint(screenPos);
+
+        if (selected == null || !constrainPullToLongAxis)
+        {
+            Vector3 nextFree = Vector3.Lerp(dragHandleRb.position, worldPointOnPlane,
+                1f - Mathf.Exp(-12f * Time.deltaTime));
+            dragHandleRb.MovePosition(nextFree);
+            return;
+        }
+
+        Vector3 axis = selected.transform.right;
+        axis.y = 0f;
+        axis = axis.normalized;
+
+        Vector3 fromStart = worldPointOnPlane - dragStartHandlePosition;
+        float along = Vector3.Dot(fromStart, axis);
+
+        along = Mathf.Clamp(along, 0f, maxPullDistance);
+
+        Vector3 constrained = dragStartHandlePosition + axis * along;
+        constrained.y = dragPlaneHeight;
+
+        Vector3 next = Vector3.Lerp(dragHandleRb.position, constrained,
+            1f - Mathf.Exp(-10f * Time.deltaTime));
+        dragHandleRb.MovePosition(next);
+    }
+
+    Vector3 ScreenToPlanePoint(Vector2 screenPos)
+    {
+        Ray ray = cam.ScreenPointToRay(screenPos);
+        Plane plane = new Plane(Vector3.up, new Vector3(0f, dragPlaneHeight, 0f));
 
         if (plane.Raycast(ray, out float enter))
-        {
-            dragHandleRb.MovePosition(ray.GetPoint(enter));
-        }
+            return ray.GetPoint(enter);
+
+        return dragHandle.transform.position;
     }
 
     void EndDrag()
     {
         draggingBlock = false;
-        if (joint) Destroy(joint);
+        if (joint != null)
+        {
+            Destroy(joint);
+            joint = null;
+        }
     }
 }

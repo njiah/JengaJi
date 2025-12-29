@@ -10,6 +10,7 @@ public class Block : MonoBehaviour
     public Material selectedMaterial;
 
     Rigidbody rb;
+    bool isSelected;
 
     void Awake()
     {
@@ -24,14 +25,17 @@ public class Block : MonoBehaviour
 
     public Rigidbody Rigidbody => rb;
 
-    public void SetSelected(bool isSelected)
+    public void SetSelected(bool selected)
     {
+        isSelected = selected;
+
         if (renderers == null) return;
         if (selectedMaterial == null || normalMaterial == null) return;
+
         foreach (var renderer in renderers)
         {
             if (renderer == null) continue;
-            renderer.sharedMaterial = isSelected ? selectedMaterial : normalMaterial;
+            renderer.material = isSelected ? selectedMaterial : normalMaterial;
         }
     }
 }

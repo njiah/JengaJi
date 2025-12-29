@@ -7,7 +7,7 @@ public class TowerGenerator : MonoBehaviour
 
     [Header("Tower Defaults")]
     public int layers = 18;
-    public float blocksPerLayer = 3;
+    public int blocksPerLayer = 3;
 
     [Header("Block Dimensions")]
     public float blockLength = 1.5f;
@@ -15,7 +15,7 @@ public class TowerGenerator : MonoBehaviour
     public float blockWidth = 0.48f;
 
     [Header("Spacing")]
-    public float verticalGap = 0.005f;
+    public float verticalGap = 0.01f;
     public float horizontalGap = 0.01f;
 
     [Header("Placement")]

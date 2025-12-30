@@ -13,7 +13,8 @@ GameObject:
   - component: {fileID: 944795371246267771}
   - component: {fileID: 4345448626620036634}
   - component: {fileID: 6531144777033342280}
-  m_Layer: 0
+  - component: {fileID: 5839362307879798950}
+  m_Layer: 6
   m_Name: Block
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -121,7 +122,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7224111272129338898}
   serializedVersion: 5
-  m_Mass: 1
+  m_Mass: 1.5
   m_LinearDamping: 0.05
   m_AngularDamping: 0.1
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -136,7 +137,26 @@ Rigidbody:
   m_ImplicitCom: 1
   m_ImplicitTensor: 1
   m_UseGravity: 1
-  m_IsKinematic: 1
+  m_IsKinematic: 0
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 3
+--- !u!114 &5839362307879798950
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7224111272129338898}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 81631b54cd5b9411cb5174687732564e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Block
+  renderers: []
+  normalMaterial: {fileID: 2100000, guid: 084c6ca9b00544445a0da853ec161d42, type: 2}
+  selectedMaterial: {fileID: 2100000, guid: 0058fc48cb7054bd189c5bf13eae7def, type: 2}
+  spring: 140
+  damper: 25
+  maxDistance: 0.08
+  dragPlaneHeight: 0

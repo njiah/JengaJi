@@ -11,7 +11,6 @@ public class TouchInputController : MonoBehaviour
     public LayerMask blockLayerMask;
 
     [Header("Drag Plane")]
-    public float dragPlaneHeight = 0f;  
 
     [Header("Tap vs Drag")]
     public float dragThresholdPixels = 30f;
@@ -19,7 +18,7 @@ public class TouchInputController : MonoBehaviour
     [Header("Drag Physics")]
     public float spring = 60f;
     public float damper = 30f;
-    public float maxDistance = 0.22f;
+    public float maxDistance = 0f; // 0.22f;
 
     Block selected;
     bool draggingBlock;
@@ -34,10 +33,12 @@ public class TouchInputController : MonoBehaviour
 
     Vector3 localGrabAnchor;
 
-    public bool constrainPullToLongAxis = true;
+    public bool constrainPullToLongAxis = false;
     public float maxPullDistance = 1.0f;
     Vector3 dragStartHandlePosition;
     Vector3 dragStartBlockPosition;
+    Vector3 dragPlanePoint;
+    Vector3 dragPlaneNormal;
 
     void Awake()
     {
@@ -135,7 +136,6 @@ public class TouchInputController : MonoBehaviour
             }
             else
             {
-                // Orbit camera if no block selected
                 orbitCamera.ApplyOrbitDelta(delta);
             }
 
@@ -189,13 +189,15 @@ public class TouchInputController : MonoBehaviour
         EndDrag();
 
         Vector3 grabWorld = selected.transform.TransformPoint(localGrabAnchor);
-        Vector3 handleStart = new Vector3(grabWorld.x, dragPlaneHeight, grabWorld.z);
+        Vector3 handleStart = grabWorld;
 
         dragHandle.transform.position = handleStart;
         dragHandleRb.position = handleStart;
 
         dragStartHandlePosition = handleStart;
         dragStartBlockPosition = selected.transform.position;
+        dragPlanePoint = grabWorld;
+        dragPlaneNormal = cam.transform.forward;
 
         joint = selected.gameObject.AddComponent<SpringJoint>();
         joint.autoConfigureConnectedAnchor = false;
@@ -206,7 +208,7 @@ public class TouchInputController : MonoBehaviour
 
         joint.spring = spring;              
         joint.damper = damper;               
-        joint.maxDistance = maxDistance;    
+        joint.maxDistance = maxDistance;
         joint.enablePreprocessing = false;
 
         draggingBlock = true;
@@ -215,36 +217,13 @@ public class TouchInputController : MonoBehaviour
     void UpdateDrag(Vector2 screenPos)
     {
         Vector3 worldPointOnPlane = ScreenToPlanePoint(screenPos);
-
-        if (selected == null || !constrainPullToLongAxis)
-        {
-            Vector3 nextFree = Vector3.Lerp(dragHandleRb.position, worldPointOnPlane,
-                1f - Mathf.Exp(-12f * Time.deltaTime));
-            dragHandleRb.MovePosition(nextFree);
-            return;
-        }
-
-        Vector3 axis = selected.transform.right;
-        axis.y = 0f;
-        axis = axis.normalized;
-
-        Vector3 fromStart = worldPointOnPlane - dragStartHandlePosition;
-        float along = Vector3.Dot(fromStart, axis);
-
-        along = Mathf.Clamp(along, 0f, maxPullDistance);
-
-        Vector3 constrained = dragStartHandlePosition + axis * along;
-        constrained.y = dragPlaneHeight;
-
-        Vector3 next = Vector3.Lerp(dragHandleRb.position, constrained,
-            1f - Mathf.Exp(-10f * Time.deltaTime));
-        dragHandleRb.MovePosition(next);
+        dragHandleRb.MovePosition(worldPointOnPlane);
     }
 
     Vector3 ScreenToPlanePoint(Vector2 screenPos)
     {
         Ray ray = cam.ScreenPointToRay(screenPos);
-        Plane plane = new Plane(Vector3.up, new Vector3(0f, dragPlaneHeight, 0f));
+        Plane plane = new Plane(dragPlaneNormal, dragPlanePoint);
 
         if (plane.Raycast(ray, out float enter))
             return ray.GetPoint(enter);
